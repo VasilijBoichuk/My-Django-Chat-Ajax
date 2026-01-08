@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>AJAX Chat</title>
+    <style>
+        body {
+            font-family: Aria;
+            margin: 0;
+            padding: 0;
+            background: #d8d2d2;
+        }
+
+        #chat-log {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #000000;
+            padding: 10px;
+            margin: 20px auto;
+            width: 90%;
+            background: #ffffff;
+            border-radius: 5px;
+        }
+
+        #chat-input {
+            display: flex;
+            width: 90%;
+            margin: 0 auto 20px auto;
+        }
+
+        #chat-input input {
+            flex: 1;
+            padding: 8px;
+            margin-right: 5px;
+            border-radius: 5px;
+            border: 1px solid #000000;
+            font-size: 14px;
+        }
+
+        #chat-input button {
+            padding: 8px 15px;
+            border-radius: 5px;
+            border: 1px solid #000000;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        #chat-input button:hover {
+            background: #1e442f;
+        }
+
+        .message {
+            margin-bottom: 8px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            background: #bdc8d2;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        .message.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .message.new {
+            background: #bdc8d2;
+        }
+
+        /* Highlighting new messages */
+    </style>
+</head>
+
+<body>
+
+    <div id="chat-log"></div>
+    <div id="chat-input">
+        <input type="text" id="username" placeholder="Please enter your name">
+        <input type="text" id="message-input" placeholder="Please enter your message">
+        <button id="send-btn">Send</button>
+    </div>
+
+    <!-- CSRF helper -->
+    <script>
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    cookie = cookie.trim();
+                    if (cookie.startsWith(name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        const csrftoken = getCookie('csrftoken');
+    </script>
+
+    <script>
+        const chatLog = document.getElementById("chat-log");
+        const messageInput = document.getElementById("message-input");
+        const usernameInput = document.getElementById("username");
+        const sendBtn = document.getElementById("send-btn");
+
+        let lastMessageCount = 0;
+
+        // Here I assign different colors per user
+        function getUserColor(username) {
+            const colors = ["#ff0000", "#0000ff", "#ffff00", "#00ff00"];
+            let hash = 0;
+            for (let i = 0; i < username.length; i++) hash += username.charCodeAt(i);
+            return colors[hash % colors.length];
+        }
+
+        function fetchMessages() {
+            fetch("/chat/get_messages/")
+                .then(res => res.json())
+                .then(data => {
+                    chatLog.innerHTML = "";
+                    data.forEach((msg, index) => {
+                        const div = document.createElement("div");
+                        div.classList.add("message");
+
+                        // Highlighting new messages
+                        if (index >= lastMessageCount) div.classList.add("new");
+
+                        // Assigning color based on username
+                        div.style.backgroundColor = getUserColor(msg.username);
+
+                        div.textContent = `[${msg.timestamp}] ${msg.username}: ${msg.content}`;
+                        chatLog.appendChild(div);
+
+                        // Triggerring animation
+                        setTimeout(() => div.classList.add("show"), 10);
+
+                        // Remove highlight after 2 seconds
+                        if (div.classList.contains("new")) {
+                            setTimeout(() => div.classList.remove("new"), 2000);
+                        }
+                    });
+                    lastMessageCount = data.length;
+                    chatLog.scrollTop = chatLog.scrollHeight;
+                });
+        }
+
+        sendBtn.onclick = () => {
+            const content = messageInput.value;
+            const username = usernameInput.value || "Anonymous"; //Anonymous if name not entered
+            if (content.trim() === "") return;
+
+            fetch("/chat/post_message/", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "X-CSRFToken": csrftoken
+                },
+                body: `username=${encodeURIComponent(username)}&content=${encodeURIComponent(content)}`
+            }).then(response => {
+                if (response.status === 403) {
+                    console.error("CSRF error.");
+                }
+                messageInput.value = "";
+                fetchMessages();
+            });
+        };
+
+        // Poll messages every 5 second
+        setInterval(fetchMessages, 5000);
+        fetchMessages(); // And this is initial load
+    </script>
+
+</body>
+
+</html>
